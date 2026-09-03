@@ -46,14 +46,39 @@ const morningBriefing = new DailyTask({
   minute: BRIEF_MINUTE,
   timeZone: BRIEF_TZ,
   run: async () => {
-    // Rebuild first so the notification reflects the actual morning, not a
-    // digest cached overnight.
-    await buildDigest({ force: true });
+    /*
+     * Refresh first so the notification reflects the actual morning rather than
+     * a digest cached overnight — but never let that block the send. On a small
+     * host a full rebuild can take many minutes, and a briefing that waits for
+     * it is a briefing that never arrives. After the deadline we send with
+     * whatever is current; the service worker fetches the headline itself when
+     * the notification lands, so a slightly later build still reaches the phone.
+     */
+    const REBUILD_DEADLINE_MS = Number(process.env.BRIEF_REBUILD_MS || 120000);
+    const startedAt = Date.now();
+    let refreshed = false;
+
+    try {
+      refreshed = await Promise.race([
+        buildDigest({ force: true }).then(() => true),
+        new Promise((resolve) => setTimeout(() => resolve(false), REBUILD_DEADLINE_MS))
+      ]);
+    } catch (err) {
+      console.warn('[brief] rebuild failed, sending anyway:', err?.message || err);
+    }
+
     const result = await push.sendAll({ urgency: 'high' });
+    const outcome = {
+      ...result,
+      refreshed,
+      tookMs: Date.now() - startedAt,
+      at: new Date().toISOString()
+    };
     console.log(
-      `[brief] morning push -> ${result.sent} delivered, ${result.failed} failed, ${result.removed} expired`
+      `[brief] morning push -> ${result.sent} delivered, ${result.failed} failed, ` +
+        `${result.removed} expired (refreshed=${refreshed}, ${Math.round(outcome.tookMs / 1000)}s)`
     );
-    return { ...result, at: new Date().toISOString() };
+    return outcome;
   }
 });
 
@@ -191,24 +216,43 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/brief') {
       const day = url.searchParams.get('day');
-      const source = day ? await readSnapshot(day) : await buildDigest();
-      if (!source) return sendJson(res, 404, { error: 'No digest stored for that day.' });
+      const source = day ? await readSnapshot(day) : digestSnapshot().payload;
+      if (!source) {
+        if (day) return sendJson(res, 404, { error: 'No digest stored for that day.' });
+        return sendJson(res, 202, {
+          building: true,
+          message: "Gathering today's stories. This takes a minute on first start."
+        });
+      }
       return sendJson(res, 200, buildBrief(source));
     }
 
     // The service worker calls this when a push wakes it, so the notification
     // text is composed from the live briefing rather than baked into the push.
     if (pathname === '/api/brief/notification') {
-      const brief = buildBrief(await buildDigest());
-      return sendJson(res, 200, briefHeadline(brief));
+      // The service worker calls this while showing a notification, so it has
+      // only seconds. Never wait on a build; the worker has its own fallback
+      // text if this comes back empty.
+      const snap = digestSnapshot();
+      if (!snap.payload) {
+        return sendJson(res, 200, {
+          title: 'Your morning briefing',
+          body: "Today's news is being gathered. Tap to read."
+        });
+      }
+      return sendJson(res, 200, briefHeadline(buildBrief(snap.payload)));
     }
 
     // A self-contained HTML file: no stylesheet, no script, no remote images,
     // so the saved copy still opens correctly offline years from now.
     if (pathname === '/api/brief/download') {
       const day = url.searchParams.get('day');
-      const source = day ? await readSnapshot(day) : await buildDigest();
-      if (!source) return sendJson(res, 404, { error: 'No digest stored for that day.' });
+      const source = day ? await readSnapshot(day) : digestSnapshot().payload;
+      if (!source) {
+        return sendJson(res, 503, {
+          error: "Today's digest is still being built. Try again in a minute."
+        });
+      }
       const brief = buildBrief(source);
       const html = briefToHTML(brief);
       res.writeHead(200, {
@@ -270,8 +314,20 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-      const result = await morningBriefing.runNow();
-      return sendJson(res, 200, { ok: true, ...result });
+      /*
+       * Acknowledge straight away. The cron service caps its own timeout well
+       * below how long a cold rebuild can take, and a dropped connection used
+       * to leave it reporting a failure for a briefing that was in fact fine.
+       * Check /api/health afterwards for the outcome.
+       */
+      morningBriefing
+        .runNow()
+        .catch((err) => console.warn('[brief] run failed:', err?.message || err));
+      return sendJson(res, 202, {
+        ok: true,
+        started: true,
+        message: 'Briefing started. See push.schedule.lastResult in /api/health for the outcome.'
+      });
     }
 
     if (pathname === '/api/push/test' && req.method === 'POST') {

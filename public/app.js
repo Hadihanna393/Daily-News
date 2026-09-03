@@ -365,8 +365,20 @@ async function loadDigest({ force = false } = {}) {
 async function loadBrief() {
   try {
     const res = await fetch('/api/brief', { cache: 'no-store' });
+    if (res.status === 202) {
+      // Still assembling. Show the skeleton and check back.
+      if (state.view.kind === 'brief') {
+        el.content.innerHTML = briefSkeleton();
+        showBanner("Gathering today's stories. This takes a minute on first load.");
+        setTimeout(() => {
+          if (state.view.kind === 'brief') loadBrief();
+        }, 6000);
+      }
+      return;
+    }
     if (!res.ok) throw new Error(`Server responded ${res.status}`);
     state.brief = await res.json();
+    showBanner('');
     if (state.view.kind === 'brief') el.content.innerHTML = renderBrief(state.brief);
   } catch (err) {
     if (state.view.kind !== 'brief') return;

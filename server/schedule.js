@@ -105,7 +105,15 @@ export class DailyTask {
   /** Force a run now, without disturbing the daily schedule. */
   async runNow() {
     this.lastRunAt = new Date().toISOString();
-    this.lastResult = await this.run();
+    this.lastResult = { started: true, at: this.lastRunAt };
+    try {
+      this.lastResult = await this.run();
+    } catch (err) {
+      // Previously a throw left lastResult as null, which is indistinguishable
+      // from "still running" when you are trying to work out what happened.
+      this.lastResult = { error: err?.message || String(err), at: new Date().toISOString() };
+      throw err;
+    }
     return this.lastResult;
   }
 
