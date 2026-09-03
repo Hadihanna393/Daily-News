@@ -1,0 +1,51 @@
+{
+  "name": "daily-digest",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A beautiful, installable daily news digest across 30+ topics. Fresh stories only.",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js",
+    "check": "node scripts/check-feeds.js",
+    "icons": "node scripts/make-icons.js",
+    "app": "electron .",
+    "build:mac": "electron-builder --mac --universal",
+    "build:mac:dmg": "electron-builder --mac dmg --universal",
+    "tunnel": "npx --yes cloudflared@latest tunnel --url http://localhost:4173",
+    "vapid:export": "node scripts/export-vapid.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {},
+  "build": {
+    "appId": "com.dailydigest.app",
+    "productName": "Daily Digest",
+    "files": [
+      "electron/**",
+      "server/**",
+      "public/**",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.cjs"
+    },
+    "mac": {
+      "category": "public.app-category.news",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "icon": "public/icons/icon-1024.png"
+    },
+    "directories": {
+      "output": "dist"
+    }
+  }
+}

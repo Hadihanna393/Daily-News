@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.verify/
+
+# Runtime state. vapid.json in particular is a private key — set it on the host
+# as VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY instead (npm run vapid:export).
+data/
+*.log
+.DS_Store
+Thumbs.db
+*.tmp
+.secret*

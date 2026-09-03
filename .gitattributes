@@ -1,0 +1,3 @@
+# The host runs Linux; keep line endings LF in the repo regardless of Windows.
+* text=auto eol=lf
+*.png binary

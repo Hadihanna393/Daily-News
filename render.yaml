@@ -1,0 +1,31 @@
+# Render blueprint. Using the native Node runtime rather than Docker: the app
+# has no dependencies, so there is nothing to build, and cold starts on the free
+# plan are noticeably quicker without a container image to pull.
+services:
+  - type: web
+    name: daily-digest
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: echo "no dependencies to install"
+    startCommand: node server/index.js
+    healthCheckPath: /api/health
+    envVars:
+      # Generated locally with `npm run vapid:export`. These MUST stay stable —
+      # a browser's push subscription is bound to the public key it subscribed
+      # with, so changing them silently invalidates every installed phone.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      # Shared secret for the cron webhook that fires the morning briefing.
+      - key: BRIEF_SEND_KEY
+        sync: false
+      - key: BRIEF_TZ
+        value: Asia/Jerusalem
+      - key: BRIEF_HOUR
+        value: "7"
+      # The free plan sleeps when idle, so the in-process scheduler cannot be
+      # relied on by itself; the cron ping is what actually triggers the send.
+      - key: NODE_VERSION
+        value: "22"
