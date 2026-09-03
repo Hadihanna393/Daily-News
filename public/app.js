@@ -631,11 +631,28 @@ window.addEventListener(
   { passive: true }
 );
 
-// Refresh quietly when the app comes back to the foreground and data is stale.
+/*
+ * Refresh quietly when the app comes back to the foreground.
+ *
+ * iOS resumes a Home Screen app from a suspended snapshot rather than
+ * reloading the page, so anything that only runs at boot may not run again for
+ * days. That includes re-asserting the push subscription, which is how the
+ * server's subscriber list repairs itself after a redeploy — so it has to
+ * happen here too, not just on load.
+ */
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible' || state.day || !state.digest) return;
+  if (document.visibilityState !== 'visible') return;
+
+  refreshBell();
+
+  if (state.day || !state.digest) return;
   const age = Date.now() - Date.parse(state.digest.generatedAt);
   if (age > 12 * 60 * 1000) loadDigest();
+});
+
+// Same reasoning for a bfcache restore, which also skips normal startup.
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted) refreshBell();
 });
 
 setInterval(() => {
