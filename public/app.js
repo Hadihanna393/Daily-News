@@ -305,15 +305,45 @@ function showBanner(msg, kind = '') {
   el.banner.hidden = false;
 }
 
+let buildPollTimer = null;
+
+function scheduleBuildPoll() {
+  if (buildPollTimer) return;
+  buildPollTimer = setInterval(() => {
+    if (document.visibilityState === 'visible') loadDigest();
+  }, 6000);
+}
+
+function stopBuildPoll() {
+  if (buildPollTimer) clearInterval(buildPollTimer);
+  buildPollTimer = null;
+}
+
 async function loadDigest({ force = false } = {}) {
   setLoading(true);
   if (!state.digest) renderSkeleton();
   try {
     const url = state.day ? `/api/archive/${state.day}` : `/api/digest${force ? '?refresh=1' : ''}`;
     const res = await fetch(url, { cache: 'no-store' });
+
+    // 202 means the server is still assembling the digest. On a small host that
+    // takes a minute or two from cold, so check back rather than sitting on an
+    // empty skeleton forever.
+    if (res.status === 202) {
+      const info = await res.json().catch(() => ({}));
+      const seconds = Math.round((info.buildingForMs || 0) / 1000);
+      showBanner(
+        `Gathering today's stories from 210 sources${seconds > 5 ? ` — ${seconds}s so far` : ''}. This takes a minute or two on first load.`
+      );
+      setLoading(false);
+      scheduleBuildPoll();
+      return;
+    }
+
     if (!res.ok) throw new Error(`Server responded ${res.status}`);
     state.digest = await res.json();
-    showBanner('');
+    stopBuildPoll();
+    showBanner(res.headers.get('X-Digest-Building') === 'true' ? 'Refreshing in the background…' : '');
   } catch (err) {
     if (state.digest) {
       showBanner('Could not reach the server — showing the last digest loaded.', 'warn');

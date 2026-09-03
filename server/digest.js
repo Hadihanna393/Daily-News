@@ -14,7 +14,32 @@ export const CONFIG = {
   dataDir: process.env.DIGEST_DATA_DIR || path.join(process.cwd(), 'data')
 };
 
-let cache = { builtAt: 0, payload: null, building: null };
+let cache = { builtAt: 0, payload: null, building: null, startedAt: 0 };
+
+/**
+ * What is available right now, without blocking.
+ *
+ * Building the digest means parsing ~210 XML documents. On a small host that
+ * takes minutes, and a request that waits for it simply times out — the page
+ * sat on its loading skeleton forever. So requests are served whatever is
+ * already built, a rebuild is kicked off in the background, and the client is
+ * told to check back.
+ */
+export function digestSnapshot() {
+  const fresh = cache.payload && Date.now() - cache.builtAt < CONFIG.cacheTtlMs;
+  if (!fresh && !cache.building) {
+    // Fire and forget; the error is reported through the next request.
+    buildDigest({ force: true }).catch((err) =>
+      console.warn('[digest] background build failed:', err?.message || err)
+    );
+  }
+  return {
+    payload: cache.payload,
+    building: Boolean(cache.building),
+    buildingForMs: cache.building ? Date.now() - cache.startedAt : 0,
+    stale: Boolean(cache.payload) && !fresh
+  };
+}
 // The last build that actually returned stories. A network blip must never be
 // allowed to replace good data with an empty digest.
 let lastGood = null;
@@ -220,8 +245,24 @@ function diversify(scored, limit) {
   return out;
 }
 
-async function buildTopic(topic, cutoffMs, now) {
-  const batches = await pool(topic.feeds, CONFIG.concurrency, (url) => fetchFeed(url));
+/**
+ * One fetch-and-parse per unique URL per build.
+ *
+ * Topics deliberately overlap — Al Jazeera's feed backs six desks — so without
+ * this the same XML was downloaded and regex-parsed six times. Wasteful
+ * anywhere; on a 0.1-CPU host it is the difference between a digest arriving
+ * and a request timing out.
+ */
+function makeFeedCache() {
+  const inflight = new Map();
+  return (url) => {
+    if (!inflight.has(url)) inflight.set(url, fetchFeed(url));
+    return inflight.get(url);
+  };
+}
+
+async function buildTopic(topic, cutoffMs, now, getFeed) {
+  const batches = await pool(topic.feeds, CONFIG.concurrency, (url) => getFeed(url));
 
   const bucket = new Map();
   let ok = 0;
@@ -290,11 +331,13 @@ export async function buildDigest({ force = false } = {}) {
   }
   if (cache.building) return cache.building;
 
+  cache.startedAt = Date.now();
   cache.building = (async () => {
     const now = Date.now();
     const cutoffMs = now - CONFIG.maxAgeHours * 3.6e6;
 
-    const sections = await pool(TOPICS, 4, (topic) => buildTopic(topic, cutoffMs, now));
+    const getFeed = makeFeedCache();
+    const sections = await pool(TOPICS, 4, (topic) => buildTopic(topic, cutoffMs, now, getFeed));
 
     const good = sections.filter((s) => s && s.id);
     const totalArticles = good.reduce((n, s) => n + s.articles.length, 0);
@@ -320,7 +363,12 @@ export async function buildDigest({ force = false } = {}) {
       return { ...lastGood, degraded: true, degradedAt: new Date(now).toISOString() };
     }
 
-    cache = { builtAt: now, payload, building: null };
+    cache = { builtAt: now, payload, building: null, startedAt: 0 };
+    console.log(
+      `[digest] built ${payload.totalArticles} stories from ` +
+        `${payload.health.feedsOk}/${payload.health.feedsTotal} feeds in ` +
+        `${((Date.now() - now) / 1000).toFixed(1)}s`
+    );
     if (totalArticles > 0) {
       lastGood = payload;
       saveSnapshot(payload).catch(() => {});

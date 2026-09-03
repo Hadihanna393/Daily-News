@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { buildDigest, listArchive, readSnapshot, CONFIG, dayKey } from './digest.js';
+import { buildDigest, digestSnapshot, listArchive, readSnapshot, CONFIG, dayKey } from './digest.js';
 import { TOPICS } from './feeds.js';
 import { buildBrief, briefHeadline } from './brief.js';
 import { briefToHTML, briefFilename } from './brief-html.js';
@@ -164,9 +164,18 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === '/api/digest') {
-      const force = url.searchParams.get('refresh') === '1';
-      const digest = await buildDigest({ force });
-      return sendJson(res, 200, digest);
+      // Never block on a build. A slow host can take minutes to parse every
+      // feed, and a waiting request just times out with nothing to show.
+      if (url.searchParams.get('refresh') === '1') buildDigest({ force: true }).catch(() => {});
+      const snap = digestSnapshot();
+      if (snap.payload) {
+        return sendJson(res, 200, snap.payload, { 'X-Digest-Building': String(snap.building) });
+      }
+      return sendJson(res, 202, {
+        building: true,
+        buildingForMs: snap.buildingForMs,
+        message: "Gathering today's stories. This takes a minute on first start."
+      });
     }
 
     if (pathname === '/api/archive') {
