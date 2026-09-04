@@ -19,11 +19,16 @@ function metaLine(a, extra = '') {
   )}</p>`;
 }
 
+function summaryPara(a) {
+  return a.summary ? `<p class="brief-summary">${esc(a.summary)}</p>` : '';
+}
+
 function numberedItem(a, index) {
   return `<li class="brief-item">
     <span class="brief-num">${index}</span>
     <div class="brief-item-body">
       <a class="brief-headline" href="${esc(a.link)}" target="_blank" rel="noopener noreferrer">${esc(a.title)}</a>
+      ${summaryPara(a)}
       ${metaLine(a, ` <span class="sep">·</span> ${esc(a.topicLabel)} `)}
     </div>
   </li>`;
@@ -34,6 +39,7 @@ function bulletItem(a, accent) {
     <span class="brief-bullet" style="--sec-accent:${esc(accent)}"></span>
     <div class="brief-item-body">
       <a class="brief-headline" href="${esc(a.link)}" target="_blank" rel="noopener noreferrer">${esc(a.title)}</a>
+      ${summaryPara(a)}
       ${metaLine(a, ' ')}
     </div>
   </li>`;
@@ -80,6 +86,7 @@ export function renderBrief(brief) {
               (r) => `<div class="desk" style="--sec-accent:${esc(r.accent)}">
                 <p class="desk-name">${esc(r.label)} <span class="desk-count">${r.count}</span></p>
                 <a class="desk-story" href="${esc(r.story.link)}" target="_blank" rel="noopener noreferrer">${esc(r.story.title)}</a>
+                ${r.story.summary ? `<p class="brief-summary">${esc(r.story.summary)}</p>` : ''}
                 <p class="brief-meta">${outletCredit(r.story)}</p>
               </div>`
             )

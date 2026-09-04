@@ -51,6 +51,32 @@ export function toPlainText(html = '') {
   return decodeEntities(text).replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * Like toPlainText, but keeps block boundaries as newlines.
+ *
+ * Feeds routinely put the standfirst and the opening paragraph in separate
+ * <p> blocks with no full stop between them. Flattening those to a space glued
+ * two sentences into one -- "...slowdown in demand for chips Nvidia will buy
+ * the popular developer platform..." -- which the sentence splitter then had
+ * no way to separate, so summaries read as run-ons.
+ */
+export function toBlockText(html = '') {
+  let text = String(html).replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
+  text = decodeEntities(text);
+  text = text
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h\d|blockquote)>/gi, '\n')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/<[^>]*$/, ' ');
+  return decodeEntities(text)
+    .replace(/[^\S\n]+/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
+}
+
 function unwrapCdata(str = '') {
   const m = String(str).match(/^\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*$/);
   return m ? m[1] : str;
@@ -389,7 +415,7 @@ export function parseFeed(xml, feedUrl) {
       );
       if (!published) return null;
 
-      const summary = toPlainText(
+      const summary = toBlockText(
         tagText(item, 'description', 'summary', 'content:encoded', 'content')
       );
 
@@ -406,7 +432,9 @@ export function parseFeed(xml, feedUrl) {
       return {
         title,
         link,
-        summary: summary.slice(0, 400),
+        // Kept generous: the summariser needs whole sentences to choose from,
+        // and trims to length itself rather than cutting mid-word.
+        summary: summary.slice(0, 900),
         image,
         // Only set when the URL was rewritten, so the browser has something
         // known-good to retry with if the rewritten variant does not exist.

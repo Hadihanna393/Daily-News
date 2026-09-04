@@ -1117,3 +1117,19 @@ html[data-theme="dark"] .brief-actions .text-btn.primary { color: #14131a; }
   .brief-row .brief-cta { flex: 0 0 auto; }
   .brief-download { width: 100%; padding: 13px 16px; }
 }
+
+/* Story detail inside the briefing. Every headline carries a few complete
+   sentences, so the page reads rather than skims. */
+.brief-summary {
+  margin: 7px 0 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  max-width: 68ch;
+  text-wrap: pretty;
+}
+.desk .brief-summary { font-size: 13.5px; line-height: 1.55; margin-top: 6px; }
+.brief-desks { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+@media print {
+  .brief-summary { font-size: 9.5pt; line-height: 1.45; color: #222; }
+}

@@ -73,21 +73,18 @@ function sameStory(a, b, threshold = 0.5) {
   return shared / Math.min(A.size, B.size) >= threshold;
 }
 
-function trimSummary(text = '', max = 240) {
-  const clean = text.trim();
-  if (clean.length <= max) return clean;
-  const cut = clean.slice(0, max);
-  const stop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('? '), cut.lastIndexOf('! '));
-  if (stop > max * 0.55) return cut.slice(0, stop + 1);
-  return cut.slice(0, cut.lastIndexOf(' ')) + '…';
-}
+/*
+ * Summaries arrive from the digest already composed into whole sentences, so
+ * there is nothing to trim. The previous version cut to a character count and
+ * appended an ellipsis, which is what left stories trailing off mid-thought.
+ */
 
 function slim(a, topic) {
   return {
     _tokens: titleTokens(a.title),
     title: a.title,
     link: a.link,
-    summary: trimSummary(a.summary),
+    summary: a.summaryFull || a.summary || '',
     source: a.source,
     alsoIn: a.alsoIn || [],
     outlets: outletCount(a),

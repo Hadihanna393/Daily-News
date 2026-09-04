@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { TOPICS } from './feeds.js';
 import { fetchFeed, dedupeKey } from './rss.js';
+import { composeSummary } from './summarize.js';
 
 export const CONFIG = {
   // Hard freshness ceiling. Anything published before this is never shown.
@@ -197,7 +198,11 @@ function mergeSimilar(items, threshold = 0.45) {
         lead.alsoIn.push(article.source);
       }
       if (!lead.image && article.image) lead.image = article.image;
-      if (article.summary.length > lead.summary.length) lead.summary = article.summary;
+      // Pool this outlet's wording too, rather than keeping only the longest.
+      lead.summaries = lead.summaries || (lead.summary ? [lead.summary] : []);
+      for (const extra of article.summaries || (article.summary ? [article.summary] : [])) {
+        if (extra && !lead.summaries.includes(extra)) lead.summaries.push(extra);
+      }
       if (Date.parse(article.published) > Date.parse(lead.published)) {
         lead.published = article.published;
       }
@@ -286,7 +291,14 @@ async function buildTopic(topic, cutoffMs, now, getFeed) {
       if (!key) continue;
       const existing = bucket.get(key);
       if (!existing) {
-        bucket.set(key, { ...article, corroboration: 0, alsoIn: [] });
+        // summaries[] pools what every outlet said about this story. It is
+        // composed into prose below and dropped before the payload is sent.
+        bucket.set(key, {
+          ...article,
+          corroboration: 0,
+          alsoIn: [],
+          summaries: article.summary ? [article.summary] : []
+        });
       } else {
         existing.corroboration++;
         if (!existing.alsoIn.includes(article.source) && article.source !== existing.source) {
@@ -297,7 +309,9 @@ async function buildTopic(topic, cutoffMs, now, getFeed) {
           existing.image = article.image;
           existing.imageFallback = article.imageFallback || '';
         }
-        if (article.summary.length > existing.summary.length) existing.summary = article.summary;
+        if (article.summary && !existing.summaries.includes(article.summary)) {
+          existing.summaries.push(article.summary);
+        }
         if (ts > Date.parse(existing.published)) existing.published = article.published;
       }
     }
@@ -311,7 +325,23 @@ async function buildTopic(topic, cutoffMs, now, getFeed) {
   const articles = diversify(
     mergeSimilar(ranked).map((a) => ({ ...a, score: scoreArticle(a, now) })),
     CONFIG.perTopic
-  ).map(({ score, ...rest }) => rest);
+  ).map(({ score, summaries, ...rest }) => {
+    /*
+     * Compose here so the pooled descriptions never travel to the client.
+     * `summary` is the couple of sentences a feed card shows; `summaryFull` is
+     * the fuller version the one-page briefing prints. Both end on a complete
+     * sentence — nothing is cut mid-thought.
+     */
+    const pool = {
+      title: rest.title,
+      summaries: summaries && summaries.length ? summaries : rest.summary ? [rest.summary] : []
+    };
+    return {
+      ...rest,
+      summary: composeSummary(pool, 300, 2) || rest.summary || '',
+      summaryFull: composeSummary(pool, 520, 4) || rest.summary || ''
+    };
+  });
 
   return {
     id: topic.id,

@@ -60,9 +60,10 @@ const STYLE = `
   .num { flex:none; width:20px; font-family:ui-serif,Georgia,serif; font-size:15px; font-weight:600; color:var(--faint); }
   .dot { flex:none; width:7px; height:7px; margin-top:7px; border-radius:50%; background:var(--accent); align-self:flex-start; }
   .headline { font-family:ui-serif,"New York",Georgia,serif; font-size:1.03rem; font-weight:600; line-height:1.32; letter-spacing:-.012em; display:block; }
+  .summary { margin:6px 0 0; font-size:14px; line-height:1.58; color:#3d3a46; }
   .meta { margin:5px 0 0; font-size:12.5px; color:var(--faint); }
   .meta em { font-style:normal; }
-  .desks { display:grid; grid-template-columns:repeat(3,1fr); gap:18px 22px; }
+  .desks { display:grid; grid-template-columns:repeat(2,1fr); gap:20px 26px; }
   .desk { border-left:2px solid var(--line); padding-left:11px; }
   .desk-name { margin:0 0 5px; font-size:11px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); }
   .numbers { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
@@ -75,7 +76,7 @@ const STYLE = `
     body { padding:0; font-size:11pt; }
     h1 { font-size:21pt; } h2.lead { font-size:15pt; } .headline { font-size:10.5pt; }
     section,li,.desk { break-inside:avoid; }
-    .desks { gap:9pt; }
+    .desks { gap:10pt; grid-template-columns:repeat(2,1fr); }
   }
 `;
 
@@ -102,6 +103,7 @@ export function briefToHTML(brief) {
             <span class="num">${i + 2}</span>
             <div>
               <a class="headline" href="${esc(a.link)}">${esc(a.title)}</a>
+              ${a.summary ? `<p class="summary">${esc(a.summary)}</p>` : ''}
               <p class="meta">${credit(a)} &middot; ${esc(a.topicLabel)}</p>
             </div>
           </li>`
@@ -120,6 +122,7 @@ export function briefToHTML(brief) {
               <span class="dot"></span>
               <div>
                 <a class="headline" href="${esc(a.link)}">${esc(a.title)}</a>
+                ${a.summary ? `<p class="summary">${esc(a.summary)}</p>` : ''}
                 <p class="meta">${credit(a)}</p>
               </div>
             </li>`
@@ -136,6 +139,7 @@ export function briefToHTML(brief) {
           (r) => `<div class="desk">
             <p class="desk-name">${esc(r.label)}</p>
             <a class="headline" href="${esc(r.story.link)}">${esc(r.story.title)}</a>
+            ${r.story.summary ? `<p class="summary">${esc(r.story.summary)}</p>` : ''}
             <p class="meta">${credit(r.story)}</p>
           </div>`
         )
